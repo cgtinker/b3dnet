@@ -1,23 +1,26 @@
-name="TCPSeverRequests"
+[project]
+name="BlendTCPRequests"
 version="0.0.1"
-description="TCP Requests to communicate with local realtime applications"
-license="GPL-2.0-only"
+description="TCP Requests to communicate with local realtime applications."
 authors = [
-    "D.Hsu - cgtinker <hello@cgtinker.com>"
+    { name="Denys Hsu - cgtinker",  email="hello@cgtinker.com"}
 ]
 maintainers = [
-    "D.Hsu - cgtinker <hello@cgtinker.com>"
+    { name="Denys Hsu - cgtinker",  email="hello@cgtinker.com"}
 ]
-repository = "https://github.com/cgtinker/TCPServerRequests"
 keywords = ["tcp", "server", "local", "realtime"]
+requires-python = ">=3.0"
 
 [tool.poetry]
 readme = "README.md"
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
-    "Topic :: Software Development :: Build Tools",
-    "Topic :: Software Development :: Libraries :: Python Modules"
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
 # pyproject.toml
 [tool.pytest.ini_options]
@@ -26,3 +29,8 @@ addopts = "-ra -q"
 testpaths = [
     "tests",
 ]
+
+[project.urls]
+"Homepage"= "https://github.com/cgtinker/TCPRequests"
+"Bug Tracker"= "https://github.com/cgtinker/TCPRequests/issues"
+
