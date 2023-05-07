@@ -173,7 +173,6 @@ def test_correct_auth_connection():
                          args=(secret, callback, port, False))
     c.start()
     s.start()
-    q.join()
     c.join()
     s.join()
 
@@ -205,7 +204,6 @@ def test_correct_auth_connection_restart():
     c.start()
     c.join()
     s.join()
-    q.join()
 
 
 def test_correct_auth_connection_none():
@@ -223,7 +221,6 @@ def test_correct_auth_connection_none():
     s.start()
     c.join()
     s.join()
-    q.join()
 
 
 def wrong_auth_server(key: Optional[bytes], callback: threading.Event, port):
@@ -235,7 +232,6 @@ def wrong_auth_server(key: Optional[bytes], callback: threading.Event, port):
     server.connect(timeout=1.0)
     assert (server.flag & SERVER.CONNECTED) == 0
     assert server.flag & SERVER.ERROR
-    q.join()
 
 
 def wrong_auth_client(key: Optional[bytes], callback: threading.Event, port):
