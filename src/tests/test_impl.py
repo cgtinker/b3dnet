@@ -142,10 +142,10 @@ def correct_auth_server(secret, callback, port, RESTART=False):
     while not SERVER_QUEUE.empty():
         request = SERVER_QUEUE.get()
         resp = request.execute()
+        SERVER_QUEUE.task_done()
         if resp is not None:
             tar = test_data.pop()
             assert tar == resp
-        SERVER_QUEUE.task_done()
 
     logging.info("flush queue")
 
@@ -195,6 +195,7 @@ def test_correct_auth_connection_restart(port: int = PORTS[2]):
     c.start()
     c.join()
     s.join()
+    q.join()
 
 
 def test_correct_auth_connection_none(port: int = PORTS[1]):
@@ -209,14 +210,9 @@ def test_correct_auth_connection_none(port: int = PORTS[1]):
                          args=(secret, callback, port, False))
     c.start()
     s.start()
-    logging.info("join stuff")
-    time.sleep(0.2)
     c.join()
-    logging.info("x")
     s.join()
-    logging.info("s")
     q.join()
-    logging.info("q")
 
 
 def wrong_auth_server(key: Optional[bytes], callback: threading.Event, port):
