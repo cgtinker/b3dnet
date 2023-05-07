@@ -28,7 +28,8 @@ from .request import *
 
 
 FAMILY = 'AF_INET'
-QUEUE_TIMEOUT = 0.5
+QUEUE_TIMEOUT = 1.0
+CONN_TIMEOUT = 3.0
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,7 @@ class CLIENT:
 
 
 class TCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-    def __init__(self, port: int, q: queue.Queue, host: str = "localhost", auth: Optional[bytes] = None):
+    def __init__(self, host: str, port: int, q: queue.Queue, auth: Optional[bytes] = None):
         super().__init__((host, port), TCPServerHandler)
         if auth is not None:
             assert isinstance(auth, bytes)
@@ -57,7 +58,7 @@ class TCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.queue = q
         self.flag = 0
 
-    def connect(self, timeout: float = 3.0):
+    def connect(self, timeout: float = CONN_TIMEOUT):
         server_thread = threading.Thread(target=self.serve_forever)
         server_thread.daemon = True
         server_thread.start()
@@ -71,16 +72,16 @@ class TCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         # accept connection
         c, address = self.socket.accept()
         if c.gettimeout() is None:
-            c.settimeout(3.0)
+            c.settimeout(CONN_TIMEOUT)
 
         # do multiprocessings challenge / handshake
-        fakemp = SocketWrapper(c)
+        fake_mp_conn = SocketWrapper(c)
         if self.auth is not None:
             assert isinstance(self.auth, bytes)
 
             try:
-                mpc.deliver_challenge(fakemp, self.auth)
-                mpc.answer_challenge(fakemp, self.auth)
+                mpc.deliver_challenge(fake_mp_conn, self.auth)
+                mpc.answer_challenge(fake_mp_conn, self.auth)
                 logging.info("Connection established.")
 
             except AssertionError:
@@ -99,7 +100,7 @@ class TCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 
 class SocketWrapper(mpc.Connection):
-    """ Wrapper to use multiprocessing handshake. """
+    """ Wrapping to use multiprocessing handshake. """
 
     def __init__(self, sock: socket.socket):
         self.sock = sock
@@ -121,7 +122,6 @@ class TCPServerHandler(socketserver.StreamRequestHandler):
 
         while self.server.flag & SERVER.CONNECTED:
             b: Optional[bytes] = recv_bytes(self.request)
-
             if b is None:
                 logging.warning("Reading operation timed out, shut down.")
                 self.server.running.clear()
@@ -169,13 +169,11 @@ class TCPClient:
     q: queue.Queue
     flag: int
 
-    def __init__(self, port, q: queue.Queue, host: str = "localhost", authkey=None):
+    def __init__(self,  host: str, port: int, authkey=None):
         self.host = host
         self.port = port
         self.authkey = authkey
         self.thread_running = threading.Event()
-        assert isinstance(q, queue.Queue)
-        self.q = q
         self.flag = 0
 
     def connect(self) -> int:
@@ -203,36 +201,29 @@ class TCPClient:
         self.flag |= CLIENT.CONNECTED
         return True
 
-    def send(self) -> bool:
+    def send(self, buf: Optional[Request]) -> bool:
+        # maybe thats better?
         # Get data from queue
         if (self.flag & CLIENT.CONNECTED) == 0:
             return False
 
-        try:
-            d = self.q.get(block=True, timeout=QUEUE_TIMEOUT)
-        except queue.Empty:
-            logging.warning("Update failed: Queue empty.")
-            self.flag |= CLIENT.SHUTDOWN
-            return False
-
         # Validate data from queue, has to be a Request object.
-        if d is None:
+        if buf is None:
             logging.error("Update failed: Empty Queue Entry.")
             self.flag |= (CLIENT.SHUTDOWN | CLIENT.ERROR)
             return False
 
-        elif not isinstance(d, Request):
+        elif not isinstance(buf, Request):
             logging.error("Update failed: Invalid queued data.")
             self.flag |= (CLIENT.SHUTDOWN | CLIENT.ERROR)
             return False
 
-        elif d.flag & (REQUEST.RESTART | REQUEST.SHUTDOWN):
+        elif buf.flag & (REQUEST.RESTART | REQUEST.SHUTDOWN):
             self.flag |= CLIENT.SHUTDOWN
 
         try:
-            data = d.to_bytes()
+            data = buf.to_bytes()
             self.conn.send_bytes(data)
-            self.q.task_done()
         except BrokenPipeError:
             logging.warning("Update failed: Broken Pipe.")
             self.flag |= CLIENT.SHUTDOWN
@@ -247,7 +238,8 @@ class TCPClient:
                 self.conn.close()
             del self.conn
 
-        self.flag &= ~CLIENT.CONNECTED
+        if hasattr(self, "flag"):
+            self.flag &= ~CLIENT.CONNECTED
 
     def __del__(self):
         self.cancel()
@@ -372,14 +364,17 @@ def _example_client():
     q = queue.Queue()
     add_sample_data2q(q)
 
-    client = TCPClient(6000, q, "localhost", b'secret_key')
+    client = TCPClient("localhost", 6000, b'secret_key')
     client.connect()
 
     # send requests to server
     while client.flag & CLIENT.CONNECTED:
-        client.send()
-        if client.flag & (CLIENT.SHUTDOWN | CLIENT.ERROR):
-            client.cancel()
+        try:
+            buf = q.get(timeout=0.2)
+        except queue.Empty:
+            break
+        client.send(buf)
+    client.cancel()
 
 
 def _example_server():
@@ -389,20 +384,24 @@ def _example_server():
     )
 
     q = queue.Queue()
-    server = TCPServer(6000, q, "localhost", b'secret_key')
+    server = TCPServer("localhost", 6001, q, b'secret_key')
     server.connect(timeout=10.0)
 
     # recv sync
     while server.flag & SERVER.CONNECTED:
-        req = q.get(timeout=0.2)
+        req = q.get(timeout=QUEUE_TIMEOUT)
         if req:
             req.execute()
         q.task_done()
 
     # flush queue
     while not q.empty():
-        req = q.get(timeout=0.2)
+        req = q.get(timeout=QUEUE_TIMEOUT)
         if req:
             req.execute()
 
         q.task_done()
+
+
+if __name__ == '__main__':
+    _example_server()
