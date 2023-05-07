@@ -7,6 +7,9 @@ import logging
 import time
 
 
+PORTS = [8644, 8645, 8646, 8647]
+
+
 def some_func(*args, **kwargs):
     return args, kwargs
 
@@ -149,7 +152,7 @@ def correct_auth_server(secret, callback, port, RESTART=False):
     assert len(test_data) == 0
 
 
-def test_correct_auth_connection(port: int = 9002):
+def test_correct_auth_connection(port: int = PORTS[3]):
     secret = b'SECRET AUTH'
     q = queue.Queue()
 
@@ -166,7 +169,7 @@ def test_correct_auth_connection(port: int = 9002):
     s.join()
 
 
-def test_correct_auth_connection_restart(port: int = 9102):
+def test_correct_auth_connection_restart(port: int = PORTS[2]):
     secret = b'SECRET AUTH'
     q = queue.Queue()
 
@@ -194,7 +197,7 @@ def test_correct_auth_connection_restart(port: int = 9102):
     s.join()
 
 
-def test_correct_auth_connection_none(port: int = 9352):
+def test_correct_auth_connection_none(port: int = PORTS[1]):
     secret = None
     q = queue.Queue()
 
@@ -253,7 +256,7 @@ def wrong_auth_client(key: Optional[bytes], callback: threading.Event, port):
     assert client.flag & CLIENT.SHUTDOWN
 
 
-def test_wrong_auth_bytes(port=9422):
+def test_wrong_auth_bytes(port=PORTS[0]):
     callback = threading.Event()
 
     c = threading.Thread(
