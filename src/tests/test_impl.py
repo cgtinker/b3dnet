@@ -5,6 +5,7 @@ import string
 import threading
 import logging
 import time
+import socket
 
 
 PORTS = [8644, 8645, 8646, 8647]
@@ -18,6 +19,14 @@ def custom_data():
     for i in range(0, 10):
         for j in string.ascii_letters:
             yield i, j
+
+
+def get_port() -> int:
+    sock = socket.socket()
+    sock.bind(('', 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
 
 
 def stage_sample_data(CLIENT_QUEUE, RESTART=False):
@@ -137,7 +146,6 @@ def correct_auth_server(secret, callback, port, RESTART=False):
 
     assert (server.flag & SERVER.CONNECTED) == 0
     assert (server.flag & SERVER.ERROR) == 0
-    logging.info("server hsould be dead")
     # flushing the queue
     while not SERVER_QUEUE.empty():
         request = SERVER_QUEUE.get()
@@ -152,7 +160,8 @@ def correct_auth_server(secret, callback, port, RESTART=False):
     assert len(test_data) == 0
 
 
-def test_correct_auth_connection(port: int = PORTS[3]):
+def test_correct_auth_connection():
+    port = get_port()
     secret = b'SECRET AUTH'
     q = queue.Queue()
 
@@ -169,7 +178,8 @@ def test_correct_auth_connection(port: int = PORTS[3]):
     s.join()
 
 
-def test_correct_auth_connection_restart(port: int = PORTS[2]):
+def test_correct_auth_connection_restart():
+    port = get_port()
     secret = b'SECRET AUTH'
     q = queue.Queue()
 
@@ -198,7 +208,8 @@ def test_correct_auth_connection_restart(port: int = PORTS[2]):
     q.join()
 
 
-def test_correct_auth_connection_none(port: int = PORTS[1]):
+def test_correct_auth_connection_none():
+    port = get_port()
     secret = None
     q = queue.Queue()
 
