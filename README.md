@@ -1,5 +1,24 @@
 # TCP Server Requests
 
+## Contributer nodes
+
+```
+python3 -m venv .venv
+source .venv/bin/activate
+
+# run tests
+pip install pytest
+python3 -m pytest
+
+# generate stubs
+pip install mypi
+stubgen src/b3dnet
+
+# build package
+pip install --upgrade build
+python3 -m build
+```
+
 
 TCP setup for realime applications on local machines. As code can get executed based on client side requests, this implementation is not considered to be safe. Only receive Request Objects from sources that you trust.<br>
 

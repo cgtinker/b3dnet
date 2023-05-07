@@ -1,4 +1,5 @@
-from src.request import *
+from ..b3dnet.request import *
+from ..b3dnet import request as req
 
 
 def test_serialization():
@@ -19,11 +20,11 @@ def test_serialization():
     # equality checks returned value as the rebuild
     # function doesn't point at the same function.
     ob = Request(
-        (REQUEST_REGISTATION | REQUEST_CALL | REQUEST_UNREGISTRATION),
+        (REQUEST.REGISTER | REQUEST.CALL | REQUEST.UNREGISTER),
         "EXAMPLE_FUNCTION", fn, 1, 2, 3, 4, 5, a=2, b=12, d=3)
 
-    b = request2bytes(ob)
-    r = bytes2request(b)
+    b = ob.to_bytes()
+    r = Request.from_bytes(b)
     assert r == ob
 
 
@@ -50,7 +51,7 @@ def test_filter_func():
         for a in args:
             add(res, a)
     return res"""
-    res = filter_func_str(fns)
+    res = req._filter_func_str(fns)
     s = """def fn(*args, **kwargs):
     import bpy
     import bmesh
@@ -86,7 +87,7 @@ def test_func2string():
             for a in args:
                 add(res, a)
         return res
-    s = func2string(fn)
+    s = req._func2string(fn)
     comp = """def fn(*args, **kwargs):
 
     def add(tar, val):
@@ -129,7 +130,7 @@ def test_string2func():
         for a in args:
             add(res, a)
     return res"""
-    comp_fn = string2func(comp)
+    comp_fn = req._string2func(comp)
     assert comp_fn is not None
     assert fn(1, 2, 3, a=3, b=1) == comp_fn(1, 2, 3, a=3, b=1)
 
@@ -138,17 +139,17 @@ def test_request_registration():
     def fn(*args):
         return args
     req = Request(
-        REQUEST_REGISTATION,
+        REQUEST.REGISTER,
         "SOME_ID",
         fn,
         1, 2, 3)
-    handle_request(req)
+    req.execute()
     assert CACHE["SOME_ID"] == fn
 
     req = Request(
-        REQUEST_UNREGISTRATION,
+        REQUEST.UNREGISTER,
         "SOME_ID")
-    handle_request(req)
+    req.execute()
     assert "SOME_ID" not in CACHE
 
 
@@ -157,18 +158,18 @@ def test_request_call():
         return args
 
     req = Request(
-        (REQUEST_REGISTATION | REQUEST_CALL),
+        (REQUEST.REGISTER | REQUEST.CALL),
         "SOME_ID",
         fn,
         1, 2, 3)
-    resp = handle_request(req)
+    resp = req.execute()
     assert resp == fn(1, 2, 3)
     req = Request(
-        REQUEST_CALL,
+        REQUEST.CALL,
         "SOME_ID",
         None,
         1, 2, 3)
-    resp = handle_request(req)
+    resp = req.execute()
     assert resp == fn(1, 2, 3)
 
 
@@ -177,45 +178,45 @@ def test_request_call_fnames():
         return sum(args) + hello + world
 
     req = Request(
-        (REQUEST_REGISTATION | REQUEST_CALL),
+        (REQUEST.REGISTER | REQUEST.CALL),
         "SOME_ID",
         fn,
         1, 2, 3, hello=21, world=32)
-    resp = handle_request(req)
+    resp = req.execute()
     assert resp == fn(1, 2, 3, hello=21, world=32)
     req = Request(
-        REQUEST_CALL,
+        REQUEST.CALL,
         "SOME_ID",
         None,
         1, 2, 3, hello=21, world=32)
-    resp = handle_request(req)
+    resp = req.execute()
     assert resp == fn(1, 2, 3, hello=21, world=32)
-    req = Request(REQUEST_CLEAR_CACHE)
-    handle_request(req)
+    req = Request(REQUEST.CLEAR_CACHE)
+    resp = req.execute()
 
 
 def test_clear_cache():
-    req = Request(REQUEST_CLEAR_CACHE)
-    handle_request(req)
+    req = Request(REQUEST.CLEAR_CACHE)
+    req.execute()
 
     def fn(*args):
         return args
     req = Request(
-        (REQUEST_REGISTATION | REQUEST_UNREGISTRATION), "_SOME_ID1", fn)
+        (REQUEST.REGISTER | REQUEST.UNREGISTER), "_SOME_ID1", fn)
 
-    handle_request(req)
-    req = Request(REQUEST_REGISTATION, "_SOME_ID2", fn)
-    handle_request(req)
-    req = Request(REQUEST_REGISTATION, "_SOME_ID3", fn)
-    handle_request(req)
-    req = Request(REQUEST_REGISTATION, "_SOME_ID4", fn)
-    handle_request(req)
-    req = Request(REQUEST_REGISTATION, "_SOME_ID5", fn)
-    handle_request(req)
+    req.execute()
+    req = Request(REQUEST.REGISTER, "_SOME_ID2", fn)
+    req.execute()
+    req = Request(REQUEST.REGISTER, "_SOME_ID3", fn)
+    req.execute()
+    req = Request(REQUEST.REGISTER, "_SOME_ID4", fn)
+    req.execute()
+    req = Request(REQUEST.REGISTER, "_SOME_ID5", fn)
+    req.execute()
 
     assert len(CACHE) == 4
-    req = Request(REQUEST_CLEAR_CACHE)
-    handle_request(req)
+    req = Request(REQUEST.CLEAR_CACHE)
+    req.execute()
     assert len(CACHE) == 0
 
 

@@ -1,5 +1,5 @@
 [project]
-name="BlendTCPRequests"
+name="b3dnet"
 version="0.0.1"
 description="TCP Requests to communicate with local realtime applications."
 authors = [
@@ -9,7 +9,16 @@ maintainers = [
     { name="Denys Hsu - cgtinker",  email="hello@cgtinker.com"}
 ]
 keywords = ["tcp", "server", "local", "realtime"]
-requires-python = ">=3.0"
+requires-python = ">=3.7"
+
+[options]
+package_dir = "src"
+[tool.setuptools.packages.find]
+# All the following settings are optional:
+where = ["src"]  # ["."] by default
+include = ["*"]  # ["*"] by default
+exclude = ["tests*"]  # empty by default
+namespaces = false  # true by default
 
 [tool.poetry]
 readme = "README.md"

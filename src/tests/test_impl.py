@@ -1,6 +1,6 @@
 import queue
-from src import tcpclient, tcpserver
-from src.request import *
+from ..b3dnet.request import *
+from ..b3dnet.connection import *
 import string
 import threading
 import logging
@@ -22,7 +22,7 @@ def stage_sample_data(CLIENT_QUEUE, RESTART=False):
 
     # register function on server side
     register_func = Request(
-        REQUEST_REGISTATION,
+        REQUEST.REGISTER,
         'FUNC_ID_NAME',
         some_func
     )
@@ -32,7 +32,7 @@ def stage_sample_data(CLIENT_QUEUE, RESTART=False):
     for i, j in custom_data():
         CLIENT_QUEUE.put(
             Request(
-                REQUEST_CALL,
+                REQUEST.CALL,
                 'FUNC_ID_NAME',
                 None,
                 i, j,
@@ -43,13 +43,13 @@ def stage_sample_data(CLIENT_QUEUE, RESTART=False):
     if RESTART:
         # clear all function in cache, shutdown server
         CLIENT_QUEUE.put(
-            Request((REQUEST_RESTART))
+            Request((REQUEST.RESTART))
         )
 
     else:
         # clear all function in cache, shutdown server
         CLIENT_QUEUE.put(
-            Request((REQUEST_CLEAR_CACHE | REQUEST_SHUTDOWN))
+            Request((REQUEST.CLEAR_CACHE | REQUEST.SHUTDOWN))
         )
 
 
@@ -67,21 +67,21 @@ def correct_auth_client(CLIENT_QUEUE, secret, callback, port, RESTART=False):
 
     # Start client
     logging.debug("Connecting client.")
-    client = tcpclient.TCPClient(port, CLIENT_QUEUE, secret)
+    client = TCPClient(port, CLIENT_QUEUE, "localhost", secret)
     conn = client.connect()
     assert conn
     time.sleep(0.2)
-    assert client.flag & CLIENT_CONNECTED
+    assert client.flag & CLIENT.CONNECTED
 
     # Send staged data
     logging.debug("Try sending data to server.")
-    while client.flag & tcpclient.CLIENT_CONNECTED:
+    while client.flag & CLIENT.CONNECTED:
         client.send()
-        if client.flag & (tcpclient.CLIENT_SHUTDOWN | tcpclient.CLIENT_ERROR):
+        if client.flag & (CLIENT.SHUTDOWN | CLIENT.ERROR):
             break
 
-    assert (client.flag & CLIENT_ERROR) == 0
-    assert client.flag & CLIENT_SHUTDOWN
+    assert (client.flag & CLIENT.ERROR) == 0
+    assert client.flag & CLIENT.SHUTDOWN
     assert CLIENT_QUEUE.empty()
 
     logging.debug("Stop client.")
@@ -107,33 +107,33 @@ def correct_auth_server(secret, callback, port, RESTART=False):
         callback.set()
 
     # connect server
-    server = tcpserver.TTCPServer(port, SERVER_QUEUE, secret)
+    server = TCPServer(port, SERVER_QUEUE, "localhost", secret)
     server.connect(timeout=3.0)
 
-    assert server.flag & SERVER_CONNECTED
+    assert server.flag & SERVER.CONNECTED
 
     logging.debug("Try receiving data")
 
     # staging received data in SERVER QUEUE
-    while server.flag & SERVER_CONNECTED:
+    while server.flag & SERVER.CONNECTED:
         # check if correct at runtime
         request = SERVER_QUEUE.get()
         if request is None:
             continue
 
-        resp = handle_request(request)
+        resp = request.execute()
         if resp is not None:
             tar = test_data.pop()
             assert tar == resp
         SERVER_QUEUE.task_done()
 
-    assert (server.flag & SERVER_CONNECTED) == 0
-    assert (server.flag & SERVER_ERROR) == 0
+    assert (server.flag & SERVER.CONNECTED) == 0
+    assert (server.flag & SERVER.ERROR) == 0
 
     # flushing the queue
     while not SERVER_QUEUE.empty():
         request = SERVER_QUEUE.get()
-        resp = handle_request(request)
+        resp = request.execute()
         if resp is not None:
             tar = test_data.pop()
             assert tar == resp
@@ -159,7 +159,7 @@ def test_correct_auth_connection(port: int = 9000):
     s.join()
 
 
-def test_correct_auth_connection_restart(port: int = 9001):
+def test_correct_auth_connection_restart(port: int = 9101):
     secret = b'SECRET AUTH'
     q = queue.Queue()
 
@@ -187,7 +187,7 @@ def test_correct_auth_connection_restart(port: int = 9001):
     s.join()
 
 
-def test_correct_auth_connection_none(port: int = 9008):
+def test_correct_auth_connection_none(port: int = 9351):
     secret = None
     q = queue.Queue()
 
@@ -208,36 +208,36 @@ def test_correct_auth_connection_none(port: int = 9008):
 def wrong_auth_server(key: Optional[bytes], callback: threading.Event, port):
     q = queue.Queue()
 
-    server = tcpserver.TTCPServer(port, q, key)
+    server = TCPServer(port, q, "localhost", key)
 
     callback.set()
     server.connect(timeout=1.0)
-    assert (server.flag & SERVER_CONNECTED) == 0
-    assert server.flag & SERVER_ERROR
+    assert (server.flag & SERVER.CONNECTED) == 0
+    assert server.flag & SERVER.ERROR
     q.join()
 
 
 def wrong_auth_client(key: Optional[bytes], callback: threading.Event, port):
     q = queue.Queue()
     q.put(Request(
-        (REQUEST_CALL | REQUEST_REGISTATION),
+        (REQUEST.CALL | REQUEST.REGISTER),
         "SOME_FUNC_ID",
         some_func,
         "args", 1
     ))
     callback.wait()
-    client = tcpclient.TCPClient(port, q, key)
+    client = TCPClient(port, q, "localhost", key)
     client.connect()
 
-    if client.flag & CLIENT_CONNECTED:
+    if client.flag & CLIENT.CONNECTED:
         logging.error("Client sending.")
         client.send()
 
-    assert (client.flag & CLIENT_CONNECTED) == 0
-    assert client.flag & CLIENT_SHUTDOWN
+    assert (client.flag & CLIENT.CONNECTED) == 0
+    assert client.flag & CLIENT.SHUTDOWN
 
 
-def test_wrong_auth_bytes(port=9003):
+def test_wrong_auth_bytes(port=9421):
     callback = threading.Event()
 
     c = threading.Thread(
