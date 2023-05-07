@@ -125,8 +125,8 @@ def correct_auth_server(secret, callback, port, RESTART=False):
 
     # connect server
     server = TCPServer("localhost", port, SERVER_QUEUE,  secret)
-    server.connect(timeout=3.0)
-
+    server.connect(timeout=1.0)
+    time.sleep(.2)
     assert server.flag & SERVER.CONNECTED
 
     logging.debug("Try receiving data")
@@ -139,7 +139,9 @@ def correct_auth_server(secret, callback, port, RESTART=False):
             req = SERVER_QUEUE.get(timeout=0.2)
         except queue.Empty:
             break
+
         if req is None:
+            SERVER_QUEUE.task_done()
             continue
 
         resp = req.execute()
@@ -147,9 +149,9 @@ def correct_auth_server(secret, callback, port, RESTART=False):
             tar = test_data.pop()
             assert tar == resp
         SERVER_QUEUE.task_done()
+    time.sleep(0.2)
+    assert (server.flag & (SERVER.CONNECTED | SERVER.ERROR)) == 0
 
-    assert (server.flag & SERVER.CONNECTED) == 0
-    assert (server.flag & SERVER.ERROR) == 0
     # flushing the queue
     while not SERVER_QUEUE.empty():
         req = None
@@ -170,6 +172,7 @@ def correct_auth_server(secret, callback, port, RESTART=False):
 
 
 def test_correct_auth_connection():
+    time.sleep(0.0)
     port = get_port()
     secret = b'SECRET AUTH'
     q = queue.Queue()
@@ -187,6 +190,7 @@ def test_correct_auth_connection():
 
 
 def test_correct_auth_connection_restart():
+    time.sleep(0.1)
     port = get_port()
     secret = b'SECRET AUTH'
     q = queue.Queue()
@@ -204,9 +208,6 @@ def test_correct_auth_connection_restart():
     del q
 
     # server should restart so just send again
-    import time
-    time.sleep(1.0)
-
     q = queue.Queue()
     c = threading.Thread(target=correct_auth_client,
                          args=(q, secret, callback, port, False))
@@ -216,6 +217,7 @@ def test_correct_auth_connection_restart():
 
 
 def test_correct_auth_connection_none():
+    time.sleep(0.3)
     port = get_port()
     secret = None
     q = queue.Queue()
@@ -233,6 +235,7 @@ def test_correct_auth_connection_none():
 
 
 def wrong_auth_server(key: Optional[bytes], callback: threading.Event, port):
+    time.sleep(0.4)
     q = queue.Queue()
 
     server = TCPServer("localhost", port, q, key)
