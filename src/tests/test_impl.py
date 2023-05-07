@@ -134,11 +134,15 @@ def correct_auth_server(secret, callback, port, RESTART=False):
     # staging received data in SERVER QUEUE
     while server.flag & SERVER.CONNECTED:
         # check if correct at runtime
-        request = SERVER_QUEUE.get()
-        if request is None:
+        req = None
+        try:
+            req = SERVER_QUEUE.get(timeout=0.2)
+        except queue.Empty:
+            break
+        if req is None:
             continue
 
-        resp = request.execute()
+        resp = req.execute()
         if resp is not None:
             tar = test_data.pop()
             assert tar == resp
@@ -148,8 +152,13 @@ def correct_auth_server(secret, callback, port, RESTART=False):
     assert (server.flag & SERVER.ERROR) == 0
     # flushing the queue
     while not SERVER_QUEUE.empty():
-        request = SERVER_QUEUE.get()
-        resp = request.execute()
+        req = None
+        try:
+            req = SERVER_QUEUE.get(timeout=0.2)
+        except queue.Empty:
+            break
+
+        resp = req.execute()
         SERVER_QUEUE.task_done()
         if resp is not None:
             tar = test_data.pop()
