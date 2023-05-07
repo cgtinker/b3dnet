@@ -31,8 +31,8 @@ jobs:
     runs-on: windows-latest
     name: windows (${{ matrix.target }})
     strategy:
-    matrix:
-      target: [x64, x86]
+      matrix:
+        target: [x64, x86]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
