@@ -145,7 +145,7 @@ def correct_auth_server(secret, callback, port, RESTART=False):
         resp = req.execute()
         if resp is not None:
             tar = test_data.pop()
-            assert tar == resp
+            assert [tar] == resp
         SERVER_QUEUE.task_done()
     time.sleep(0.2)
     assert (server.flag & (SERVER.CONNECTED | SERVER.ERROR)) == 0
@@ -176,12 +176,12 @@ def test_correct_auth_connection():
 
     # callback to sync client and server
     callback = threading.Event()
-    c = threading.Thread(target=correct_auth_client,
-                         args=(q, secret, callback, port, False))
     s = threading.Thread(target=correct_auth_server,
                          args=(secret, callback, port, False))
-    c.start()
     s.start()
+    c = threading.Thread(target=correct_auth_client,
+                         args=(q, secret, callback, port, False))
+    c.start()
     c.join()
     s.join()
 
@@ -194,12 +194,12 @@ def test_correct_auth_connection_restart():
 
     # callback to sync client and server
     callback = threading.Event()
-    c = threading.Thread(target=correct_auth_client,
-                         args=(q, secret, callback, port, True))
     s = threading.Thread(target=correct_auth_server,
                          args=(secret, callback, port, True))
-    c.start()
     s.start()
+    c = threading.Thread(target=correct_auth_client,
+                         args=(q, secret, callback, port, True))
+    c.start()
     c.join()
     q.join()
     del q
@@ -220,12 +220,12 @@ def test_correct_auth_connection_none():
 
     # callback to sync client and server
     callback = threading.Event()
-    c = threading.Thread(target=correct_auth_client,
-                         args=(q, secret, callback, port, False))
     s = threading.Thread(target=correct_auth_server,
                          args=(secret, callback, port, False))
-    c.start()
     s.start()
+    c = threading.Thread(target=correct_auth_client,
+                         args=(q, secret, callback, port, False))
+    c.start()
     c.join()
     s.join()
 
@@ -271,16 +271,16 @@ def test_wrong_auth_bytes():
     port = get_port(0.5)
     callback = threading.Event()
 
-    c = threading.Thread(
-        target=wrong_auth_client, args=(b'hello_world', callback, port)
-    )
     s = threading.Thread(
         target=wrong_auth_server, args=(b'good_night', callback, port)
     )
-    c.start()
     s.start()
-    s.join()
+    c = threading.Thread(
+        target=wrong_auth_client, args=(b'hello_world', callback, port)
+    )
+    c.start()
     c.join()
+    s.join()
 
 
 def _main():
