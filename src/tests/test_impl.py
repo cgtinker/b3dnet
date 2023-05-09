@@ -8,9 +8,6 @@ import time
 import socket
 
 
-PORTS = [8644, 8645, 8646, 8647]
-
-
 def some_func(*args, **kwargs):
     return args, kwargs
 
@@ -21,7 +18,8 @@ def custom_data():
             yield i, j
 
 
-def get_port() -> int:
+def get_port(delay: float = 0.1) -> int:
+    time.sleep(delay)
     sock = socket.socket()
     sock.bind(('', 0))
     port = sock.getsockname()[1]
@@ -33,8 +31,8 @@ def stage_sample_data(CLIENT_QUEUE, RESTART=False):
     logging.debug("Staging sample data.")
 
     # register function on server side
-    register_func = Request(
-        REQUEST.REGISTER,
+    register_func = Task(
+        TASK.REGISTER,
         'FUNC_ID_NAME',
         some_func
     )
@@ -43,8 +41,8 @@ def stage_sample_data(CLIENT_QUEUE, RESTART=False):
     # execute function with custom data
     for i, j in custom_data():
         CLIENT_QUEUE.put(
-            Request(
-                REQUEST.CALL,
+            Task(
+                TASK.CALL,
                 'FUNC_ID_NAME',
                 None,
                 i, j,
@@ -55,13 +53,13 @@ def stage_sample_data(CLIENT_QUEUE, RESTART=False):
     if RESTART:
         # clear all function in cache, shutdown server
         CLIENT_QUEUE.put(
-            Request((REQUEST.RESTART))
+            Task((TASK.RESTART))
         )
 
     else:
         # clear all function in cache, shutdown server
         CLIENT_QUEUE.put(
-            Request((REQUEST.CLEAR_CACHE | REQUEST.SHUTDOWN))
+            Task((TASK.CLEAR_CACHE | TASK.SHUTDOWN))
         )
 
 
@@ -172,8 +170,7 @@ def correct_auth_server(secret, callback, port, RESTART=False):
 
 
 def test_correct_auth_connection():
-    time.sleep(0.0)
-    port = get_port()
+    port = get_port(0.1)
     secret = b'SECRET AUTH'
     q = queue.Queue()
 
@@ -190,7 +187,7 @@ def test_correct_auth_connection():
 
 
 def test_correct_auth_connection_restart():
-    time.sleep(0.1)
+    time.sleep(0.2)
     port = get_port()
     secret = b'SECRET AUTH'
     q = queue.Queue()
@@ -217,8 +214,7 @@ def test_correct_auth_connection_restart():
 
 
 def test_correct_auth_connection_none():
-    time.sleep(0.3)
-    port = get_port()
+    port = get_port(0.3)
     secret = None
     q = queue.Queue()
 
@@ -235,7 +231,7 @@ def test_correct_auth_connection_none():
 
 
 def wrong_auth_server(key: Optional[bytes], callback: threading.Event, port):
-    time.sleep(0.4)
+    port = get_port(0.4)
     q = queue.Queue()
 
     server = TCPServer("localhost", port, q, key)
@@ -248,16 +244,16 @@ def wrong_auth_server(key: Optional[bytes], callback: threading.Event, port):
 
 def wrong_auth_client(key: Optional[bytes], callback: threading.Event, port):
     q = queue.Queue()
-    q.put(Request(
-        (REQUEST.CALL | REQUEST.REGISTER),
+    q.put(Task(
+        (TASK.CALL | TASK.REGISTER),
         "SOME_FUNC_ID",
         some_func,
         "args", 1
     ))
     callback.wait()
     client = TCPClient("localhost", port,  key)
-    client.connect()
 
+    client.connect()
     assert (client.flag & CLIENT.CONNECTED) == 0
     while client.flag & CLIENT.CONNECTED:
         try:
@@ -271,7 +267,8 @@ def wrong_auth_client(key: Optional[bytes], callback: threading.Event, port):
     assert client.flag & CLIENT.SHUTDOWN
 
 
-def test_wrong_auth_bytes(port=PORTS[0]):
+def test_wrong_auth_bytes():
+    port = get_port(0.5)
     callback = threading.Event()
 
     c = threading.Thread(

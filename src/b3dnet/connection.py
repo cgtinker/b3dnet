@@ -127,9 +127,9 @@ class TCPServerHandler(socketserver.StreamRequestHandler):
                 self.server.running.clear()
                 break
 
-            self.req = Request.from_bytes(b)
+            self.req = Task.from_bytes(b)
             self.server.queue.put(self.req)
-            if self.req.flag & (REQUEST.RESTART | REQUEST.SHUTDOWN):
+            if self.req.flag & (TASK.RESTART | TASK.SHUTDOWN):
                 logging.debug("Received server control request...")
                 break
 
@@ -144,13 +144,13 @@ class TCPServerHandler(socketserver.StreamRequestHandler):
             logging.debug(
                 f"Server active: {self.server.running.is_set()}, Request: {self.req}")
             pass
-        elif self.req.flag & REQUEST.SHUTDOWN:
+        elif self.req.flag & TASK.SHUTDOWN:
             logging.debug("Server shutdown...")
             pass
         elif self.server.flag & SERVER.ERROR:
             logging.debug("Server error...")
             pass
-        elif self.req.flag & REQUEST.RESTART:
+        elif self.req.flag & TASK.RESTART:
             self.server.flag |= SERVER.RESTART
             logging.debug("Server restart...")
             return
@@ -201,7 +201,7 @@ class TCPClient:
         self.flag |= CLIENT.CONNECTED
         return True
 
-    def send(self, buf: Optional[Request]) -> bool:
+    def send(self, buf: Optional[Task]) -> bool:
         # maybe thats better?
         # Get data from queue
         if (self.flag & CLIENT.CONNECTED) == 0:
@@ -213,12 +213,12 @@ class TCPClient:
             self.flag |= (CLIENT.SHUTDOWN | CLIENT.ERROR)
             return False
 
-        elif not isinstance(buf, Request):
+        elif not isinstance(buf, Task):
             logging.error("Update failed: Invalid queued data.")
             self.flag |= (CLIENT.SHUTDOWN | CLIENT.ERROR)
             return False
 
-        elif buf.flag & (REQUEST.RESTART | REQUEST.SHUTDOWN):
+        elif buf.flag & (TASK.RESTART | TASK.SHUTDOWN):
             self.flag |= CLIENT.SHUTDOWN
 
         try:
@@ -341,21 +341,21 @@ def _example_client():
             print("Method from client which prints!", args, kwargs)
 
         # register function to the cache
-        register_func = Request(
-            (REQUEST.REGISTER | REQUEST.CALL), 'HELLO_WORLD_FN', hello_world
+        register_func = Task(
+            (TASK.REGISTER | TASK.CALL), 'HELLO_WORLD_FN', hello_world
         )
         q.put(register_func)
 
         # call the function using args
         for i in range(0, 1000):
-            call_data = Request(
-                REQUEST.CALL, 'HELLO_WORLD_FN', None,
+            call_data = Task(
+                TASK.CALL, 'HELLO_WORLD_FN', None,
                 f"args_{i}", kwargs=f"kwargs_{i}")
             q.put(call_data)
 
         # shutdown the server request
-        q.put(Request((REQUEST.SHUTDOWN | REQUEST.CLEAR_CACHE), ))
-        # q.put(Request((REQUEST_RESTART | REQUEST_CLEAR_CACHE)))
+        q.put(Task((TASK.SHUTDOWN | TASK.CLEAR_CACHE), ))
+        # q.put(Task((TASK.RESTART | TASK.CLEAR_CACHE)))
 
     logging.basicConfig(
         format='%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',

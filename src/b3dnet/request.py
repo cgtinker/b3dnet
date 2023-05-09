@@ -34,7 +34,7 @@ MODULES = [
 
 
 @dataclass(frozen=True)
-class REQUEST:
+class TASK:
     REGISTER: int = 1 << 0
     CALL: int = 1 << 1
     UNREGISTER: int = 1 << 2
@@ -43,7 +43,7 @@ class REQUEST:
     CLEAR_CACHE: int = 1 << 31
 
 
-class Request:
+class Task:
     flag: int
     idname: Optional[str]
     func: Optional[Callable]
@@ -83,7 +83,7 @@ class Request:
         assert isinstance(flag, int)
         if idname is not None:
             assert isinstance(idname, str)
-        if flag & REQUEST.REGISTER:
+        if flag & TASK.REGISTER:
             assert isinstance(func, Callable)
 
         self.flag = flag
@@ -96,16 +96,16 @@ class Request:
         """ Executes a request depending on it's flag. """
         response = None
 
-        if self.flag & REQUEST.REGISTER:
+        if self.flag & TASK.REGISTER:
             CACHE[self.idname] = self.func
 
-        if self.flag & REQUEST.CALL:
+        if self.flag & TASK.CALL:
             response = CACHE[self.idname](*self.args, **self.kwargs)
 
-        if self.flag & REQUEST.UNREGISTER:
+        if self.flag & TASK.UNREGISTER:
             del CACHE[self.idname]
 
-        if self.flag & REQUEST.CLEAR_CACHE:
+        if self.flag & TASK.CLEAR_CACHE:
             CACHE.clear()
 
         return response
@@ -114,7 +114,7 @@ class Request:
         """ Convert request to bytes. 
         Conversion depends on flag. """
         d = self.__dict__.copy()
-        if self.flag & REQUEST.REGISTER:
+        if self.flag & TASK.REGISTER:
             d['func'] = _func2string(self.func)  # type: ignore
         j = json.dumps(d)
         return j.encode('utf-8')

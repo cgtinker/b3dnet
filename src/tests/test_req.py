@@ -19,12 +19,12 @@ def test_serialization():
 
     # equality checks returned value as the rebuild
     # function doesn't point at the same function.
-    ob = Request(
-        (REQUEST.REGISTER | REQUEST.CALL | REQUEST.UNREGISTER),
+    ob = Task(
+        (TASK.REGISTER | TASK.CALL | TASK.UNREGISTER),
         "EXAMPLE_FUNCTION", fn, 1, 2, 3, 4, 5, a=2, b=12, d=3)
 
     b = ob.to_bytes()
-    r = Request.from_bytes(b)
+    r = Task.from_bytes(b)
     assert r == ob
 
 
@@ -138,16 +138,16 @@ def test_string2func():
 def test_request_registration():
     def fn(*args):
         return args
-    req = Request(
-        REQUEST.REGISTER,
+    req = Task(
+        TASK.REGISTER,
         "SOME_ID",
         fn,
         1, 2, 3)
     req.execute()
     assert CACHE["SOME_ID"] == fn
 
-    req = Request(
-        REQUEST.UNREGISTER,
+    req = Task(
+        TASK.UNREGISTER,
         "SOME_ID")
     req.execute()
     assert "SOME_ID" not in CACHE
@@ -157,15 +157,15 @@ def test_request_call():
     def fn(*args):
         return args
 
-    req = Request(
-        (REQUEST.REGISTER | REQUEST.CALL),
+    req = Task(
+        (TASK.REGISTER | TASK.CALL),
         "SOME_ID",
         fn,
         1, 2, 3)
     resp = req.execute()
     assert resp == fn(1, 2, 3)
-    req = Request(
-        REQUEST.CALL,
+    req = Task(
+        TASK.CALL,
         "SOME_ID",
         None,
         1, 2, 3)
@@ -177,45 +177,45 @@ def test_request_call_fnames():
     def fn(*args, hello, world):
         return sum(args) + hello + world
 
-    req = Request(
-        (REQUEST.REGISTER | REQUEST.CALL),
+    req = Task(
+        (TASK.REGISTER | TASK.CALL),
         "SOME_ID",
         fn,
         1, 2, 3, hello=21, world=32)
     resp = req.execute()
     assert resp == fn(1, 2, 3, hello=21, world=32)
-    req = Request(
-        REQUEST.CALL,
+    req = Task(
+        TASK.CALL,
         "SOME_ID",
         None,
         1, 2, 3, hello=21, world=32)
     resp = req.execute()
     assert resp == fn(1, 2, 3, hello=21, world=32)
-    req = Request(REQUEST.CLEAR_CACHE)
+    req = Task(TASK.CLEAR_CACHE)
     resp = req.execute()
 
 
 def test_clear_cache():
-    req = Request(REQUEST.CLEAR_CACHE)
+    req = Task(TASK.CLEAR_CACHE)
     req.execute()
 
     def fn(*args):
         return args
-    req = Request(
-        (REQUEST.REGISTER | REQUEST.UNREGISTER), "_SOME_ID1", fn)
+    req = Task(
+        (TASK.REGISTER | TASK.UNREGISTER), "_SOME_ID1", fn)
 
     req.execute()
-    req = Request(REQUEST.REGISTER, "_SOME_ID2", fn)
+    req = Task(TASK.REGISTER, "_SOME_ID2", fn)
     req.execute()
-    req = Request(REQUEST.REGISTER, "_SOME_ID3", fn)
+    req = Task(TASK.REGISTER, "_SOME_ID3", fn)
     req.execute()
-    req = Request(REQUEST.REGISTER, "_SOME_ID4", fn)
+    req = Task(TASK.REGISTER, "_SOME_ID4", fn)
     req.execute()
-    req = Request(REQUEST.REGISTER, "_SOME_ID5", fn)
+    req = Task(TASK.REGISTER, "_SOME_ID5", fn)
     req.execute()
 
     assert len(CACHE) == 4
-    req = Request(REQUEST.CLEAR_CACHE)
+    req = Task(TASK.CLEAR_CACHE)
     req.execute()
     assert len(CACHE) == 0
 
