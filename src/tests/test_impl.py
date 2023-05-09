@@ -32,7 +32,7 @@ def stage_sample_data(CLIENT_QUEUE, RESTART=False):
 
     # register function on server side
     register_func = Task(
-        TASK.REGISTER,
+        TASK.NEW_FN,
         'FUNC_ID_NAME',
         some_func
     )
@@ -42,7 +42,7 @@ def stage_sample_data(CLIENT_QUEUE, RESTART=False):
     for i, j in custom_data():
         CLIENT_QUEUE.put(
             Task(
-                TASK.CALL,
+                TASK.CALL_FN,
                 'FUNC_ID_NAME',
                 None,
                 i, j,
@@ -53,13 +53,13 @@ def stage_sample_data(CLIENT_QUEUE, RESTART=False):
     if RESTART:
         # clear all function in cache, shutdown server
         CLIENT_QUEUE.put(
-            Task((TASK.RESTART))
+            Task(TASK.RESTART)
         )
 
     else:
         # clear all function in cache, shutdown server
         CLIENT_QUEUE.put(
-            Task((TASK.CLEAR_CACHE | TASK.SHUTDOWN))
+            Task((TASK.CLEAR_CACHE | TASK.SHUTDOWN)),
         )
 
 
@@ -245,7 +245,7 @@ def wrong_auth_server(key: Optional[bytes], callback: threading.Event, port):
 def wrong_auth_client(key: Optional[bytes], callback: threading.Event, port):
     q = queue.Queue()
     q.put(Task(
-        (TASK.CALL | TASK.REGISTER),
+        (TASK.CALL_FN | TASK.NEW_FN),
         "SOME_FUNC_ID",
         some_func,
         "args", 1

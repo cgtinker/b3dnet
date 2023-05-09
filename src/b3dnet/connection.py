@@ -342,14 +342,14 @@ def _example_client():
 
         # register function to the cache
         register_func = Task(
-            (TASK.REGISTER | TASK.CALL), 'HELLO_WORLD_FN', hello_world
+            (TASK.NEW_FN | TASK.CALL_FN), 'HELLO_WORLD_FN', hello_world
         )
         q.put(register_func)
 
         # call the function using args
         for i in range(0, 1000):
             call_data = Task(
-                TASK.CALL, 'HELLO_WORLD_FN', None,
+                TASK.CALL_FN, 'HELLO_WORLD_FN', None,
                 f"args_{i}", kwargs=f"kwargs_{i}")
             q.put(call_data)
 
