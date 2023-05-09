@@ -39,16 +39,16 @@ class TASK:
     CALL_FN: int = 1 << 1  # call a fn
     DEL_FN: int = 1 << 2  # unregister a fn
 
-    NEW_OB: int = 1 << 5
-    SET_OB: int = 1 << 6
-    DEL_OB: int = 1 << 7
-    OB_AS_ARG: int = 1 << 8
-    OB_AS_KWARG: int = 1 << 9
+    NEW_OB: int = 1 << 5  # register an ob
+    SET_OB: int = 1 << 6  # set an ob by a fn call
+    DEL_OB: int = 1 << 7  # unregister an ob
+    OB_AS_ARG: int = 1 << 8  # use an ob as arg
+    OB_AS_KWARG: int = 1 << 9  # use an ob with its idname as kwarg
 
     SHUTDOWN: int = 1 << 10  # shutdown server
     RESTART: int = 1 << 11  # restart server
 
-    CLEAR_CACHE: int = 1 << 31
+    CLEAR_CACHE: int = 1 << 31  # removes obs and fns
 
 
 def flatten(objs: Union[list, Any]):
@@ -67,18 +67,27 @@ class Task:
     kwargs: dict
 
     def __init__(self, flag: int, idname: Optional[Union[str, List[str]]] = None, call: Optional[Callable] = None, *args, **kwargs):
-        """ Simple object base to be send via the socket.
+        """ Task object to be send via the socket.
         Functions targeting blender may be attached and executed on the local server.
-        A function can be registered and called using the idname.
+        A function can be registered and called using the idname, as such an object as callable.
         *args and **kwargs get passed to the called function.
 
-        Flags:
-            TASK.REGISTER
-            TASK.CALL
-            TASK.UNREGISTER
-            TASK.SHUTDOWN
-            TASK.RESTART
-            TASK.CLEAR_CACHE
+        Available Flags for Task objects.
+        class TASK:
+            NEW_FN: int = 1 << 0  # register a fn
+            CALL_FN: int = 1 << 1  # call a fn
+            DEL_FN: int = 1 << 2  # unregister a fn
+
+            NEW_OB: int = 1 << 5  # register an ob
+            SET_OB: int = 1 << 6  # set an ob by a fn call - may only use one ob and one fn to do so
+            DEL_OB: int = 1 << 7  # unregister an ob
+            OB_AS_ARG: int = 1 << 8  # use obs as args for fn calls
+            OB_AS_KWARG: int = 1 << 9  # use obs with idnames as kwargs for fn calls
+
+            SHUTDOWN: int = 1 << 10  # shutdown server
+            RESTART: int = 1 << 11  # restart server
+
+            CLEAR_CACHE: int = 1 << 31  # removes obs and fns
 
         Import of modules within the function get filtered:
         Available modules:
@@ -105,21 +114,22 @@ class Task:
             return obj
 
         fn_task = Task(
-            (TASK.REGISTER),
+            (TASK.NEW_FN),
             "MODIFY_OBJ_FN", ob_fn
         )
         client.send_bytes(fn_task.to_bytes)
 
+        # has to be a callable object type
         some_ob = Task(
-            (OBJ.CREATE),
+            (OBJ.NEW_OBJ),
             "SOME_OBJECT_ID", list
         )
         client.send_bytes(some_ob.to_bytes)
 
         modify_ob = Task(
             (TASK.OBJ_AS_ARG | TASK.CALL_FN),
-            ["SOME_OBJECT_ID", "MODIFY_OBJ_FN"],
-            None, "args"
+            ["SOME_OB_ID", "SOME_FN_ID"],
+            None, "args", kwargs={}
         )
 
         """
@@ -131,13 +141,50 @@ class Task:
         self.kwargs = kwargs
         self._validate()
 
+    def to_bytes(self) -> bytes:
+        """ Convert request to bytes.
+        Conversion depends on flag. """
+        d = self.__dict__.copy()
+        if self.flag & (TASK.NEW_FN | TASK.NEW_OB):
+            d['func'] = _func2string(self.func)  # type: ignore
+        j = json.dumps(d)
+        return j.encode('utf-8')
+
+    @ classmethod
+    def from_bytes(cls, resp: bytes):
+        """ Creates request from bytes. """
+        s = resp.decode('utf-8')
+        d = json.loads(s)
+        return cls(
+            d['flag'],
+            d['idname'],
+            _string2func(d['func']),
+            *d['args'],
+            **d['kwargs']
+        )
+
+    def execute(self) -> Optional[Any]:
+        """ Executes a request depending on it's flag. """
+        rflag = 0
+        rflag = self._pre_tasks(rflag)
+        rflag, resp = self._executable_tasks(rflag)
+        rflag = self._post_tasks(rflag)
+        if rflag != self.flag:
+
+            logging.error(
+                f"Return value of executed tasks"
+                f"do not match task. {rflag} != {self.flag}")
+        return resp
+
     def _validate(self):
+        """ Some checks to prevent combinations that
+        would produce unexpected result or errors. """
         assert isinstance(self.flag, int)
         if isinstance(self.idname, list):
             for tmp in self.idname:
                 assert isinstance(tmp, str)
 
-        if self.flag & TASK.NEW_FN:
+        if self.flag & (TASK.NEW_FN | TASK.NEW_OB):
             assert isinstance(self.func, Callable)
 
         invalid_combs = [
@@ -148,7 +195,12 @@ class Task:
         for comb in invalid_combs:
             assert self.flag & comb != comb
 
-    def pre_tasks(self, rflag):
+        if self.flag & (TASK.CALL_FN | TASK.SET_OB) == (TASK.CALL_FN | TASK.SET_OB):
+            assert isinstance(self.idname, list)
+            assert len(self.idname) == 2
+
+    def _pre_tasks(self, rflag):
+        """ Tasks which register new objects or functions. """
         if self.func is None:
             return rflag
 
@@ -165,7 +217,8 @@ class Task:
             rflag |= TASK.NEW_OB
         return rflag
 
-    def combine_tasks(self, rflag):
+    def _executable_tasks(self, rflag):
+        """ Tasks which call functions, set object properties. """
         obkwargs = {}
         obargs = []
         fns = []
@@ -194,8 +247,9 @@ class Task:
                 self.kwargs[k] = v
             rflag |= TASK.OB_AS_KWARG
 
-        # set ob by fn (only makes sense if 1 ob + 1 fn)
+        # set ob by fn
         if self.flag & (TASK.CALL_FN | TASK.SET_OB) == (TASK.CALL_FN | TASK.SET_OB):
+            # there should always be only 1ob+1fn
             for fn in fns:
                 for ob in obargs:
                     ob = fn(*self.args, **self.kwargs)
@@ -210,7 +264,8 @@ class Task:
 
         return rflag, resp
 
-    def post_tasks(self, rflag):
+    def _post_tasks(self, rflag):
+        """ Tasks that handle unregistration and server actions. """
         # delete fns
         if self.flag & TASK.DEL_FN:
             for name in flatten(self.idname):
@@ -244,41 +299,6 @@ class Task:
             rflag |= TASK.SHUTDOWN
         return rflag
 
-    def execute(self) -> Optional[Any]:
-        """ Executes a request depending on it's flag. """
-        rflag = 0
-        rflag = self.pre_tasks(rflag)
-        rflag, resp = self.combine_tasks(rflag)
-        rflag = self.post_tasks(rflag)
-        if rflag != self.flag:
-
-            logging.error(
-                f"Return value of executed tasks"
-                f"do not match task. {rflag} != {self.flag}")
-        return resp
-
-    def to_bytes(self) -> bytes:
-        """ Convert request to bytes.
-        Conversion depends on flag. """
-        d = self.__dict__.copy()
-        if self.flag & (TASK.NEW_FN | TASK.NEW_OB):
-            d['func'] = _func2string(self.func)  # type: ignore
-        j = json.dumps(d)
-        return j.encode('utf-8')
-
-    @ classmethod
-    def from_bytes(cls, resp: bytes):
-        """ Creates request from bytes. """
-        s = resp.decode('utf-8')
-        d = json.loads(s)
-        return cls(
-            d['flag'],
-            d['idname'],
-            _string2func(d['func']),
-            *d['args'],
-            **d['kwargs']
-        )
-
     @ staticmethod
     def _capture(func, *args, **kwargs) -> list:
         # capture stdout of the func call
@@ -292,6 +312,7 @@ class Task:
         return lines
 
     def __eq__(self, other):
+        # not true equality...
         func_eq = False
         if self.func and other.func:
             a = self.func(*self.args, **self.kwargs)
