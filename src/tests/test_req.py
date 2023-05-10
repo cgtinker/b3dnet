@@ -26,6 +26,8 @@ def test_serialization():
     b = ob.to_bytes()
     r = Task.from_bytes(b)
     assert r == ob
+    req = Task(TASK.CLEAR_CACHE)
+    req.execute()
 
 
 def test_filter_func():
@@ -151,6 +153,8 @@ def test_request_registration():
         "SOME_ID")
     req.execute()
     assert "SOME_ID" not in CACHE
+    req = Task(TASK.CLEAR_CACHE)
+    req.execute()
 
 
 def test_request_call():
@@ -171,6 +175,9 @@ def test_request_call():
         1, 2, 3)
     resp = req.execute()
     assert resp == [fn(1, 2, 3)]
+
+    req = Task(TASK.CLEAR_CACHE)
+    req.execute()
 
 
 def test_request_call_fnames():
@@ -218,9 +225,91 @@ def test_clear_cache():
     req = Task(TASK.CLEAR_CACHE)
     req.execute()
     assert len(CACHE) == 0
+    req = Task(TASK.CLEAR_CACHE)
+    req.execute()
+
+
+def test_obj_assignment(clear_cache=True):
+    # args / kwargs wont get used but should cause issues
+    req = Task(TASK.NEW_OB, "OBJECT_ID", list, "random", "args", kwargs="")
+    req.execute()
+    assert len(CACHE) == 1
+
+    def fn_set(*args):
+        return [i for i in list(args)]
+
+    # dont overwrite cache
+    args = [1, 2, 4, 3, 9, 6, 21]
+    req = Task(
+        (TASK.NEW_FN | TASK.CALL_FN | TASK.DEL_FN | TASK.SET_OB),
+        ["FN_SET_ID", "OBJECT_ID"], fn_set,
+        *args
+    )
+    req.execute()
+    assert CACHE['OBJECT_ID'] == args
+    assert len(CACHE) == 1
+    if clear_cache:
+        req = Task(TASK.CLEAR_CACHE)
+        req.execute()
+
+
+def test_ob_as_arg():
+    test_obj_assignment(False)
+    assert len(CACHE) == 1
+    args = [1, 2, 4, 3, 9, 6, 21]
+
+    def fn_ob_as_arg(*args):
+        x = 0
+        for arg in args:
+            if isinstance(arg, int):
+                x += arg
+            if isinstance(arg, list):
+                x += fn_ob_as_arg(*arg)
+
+        return x
+
+    req = Task(
+        (TASK.NEW_FN | TASK.CALL_FN | TASK.OB_AS_ARG | TASK.DEL_FN),
+        ["FN_SUM_ID", "OBJECT_ID", "OBJECT_ID"],
+        fn_ob_as_arg, 10, 10, 10
+    )
+    resp = req.execute()
+    assert [30 + sum(args)*2] == resp
+    req = Task(TASK.CLEAR_CACHE)
+    req.execute()
+
+
+def test_ob_as_kwarg():
+    req = Task((TASK.NEW_OB | TASK.CALL_FN),
+               "OBJECT_ID", int)
+    req.execute()
+
+    def fn_set():
+        return 21
+
+    req = Task(
+        (TASK.NEW_FN | TASK.CALL_FN | TASK.SET_OB),
+        ["FN_SET_ID", "OBJECT_ID"], fn_set)
+    req.execute()
+
+    def fn_kwarg(RANDOM=None, OBJECT_ID=None):
+        print(RANDOM, OBJECT_ID)
+        assert OBJECT_ID is not None
+        assert RANDOM is None
+
+    req = Task(
+        (TASK.CALL_FN | TASK.DEL_FN | TASK.OB_AS_KWARG),
+        "FN_ID", fn_kwarg)
+    req.execute()
+
+    req = Task(TASK.CLEAR_CACHE)
+    req.execute()
 
 
 def _main():
+    test_ob_as_arg()
+    test_ob_as_kwarg()
+    test_obj_assignment()
     test_serialization()
     test_filter_func()
     test_func2string()

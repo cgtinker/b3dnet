@@ -32,7 +32,7 @@ def stage_sample_data(CLIENT_QUEUE, RESTART=False):
 
     # register function on server side
     register_func = Task(
-        TASK.NEW_FN,
+        (TASK.NEW_FN),
         'FUNC_ID_NAME',
         some_func
     )
@@ -42,7 +42,7 @@ def stage_sample_data(CLIENT_QUEUE, RESTART=False):
     for i, j in custom_data():
         CLIENT_QUEUE.put(
             Task(
-                TASK.CALL_FN,
+                (TASK.CALL_FN),
                 'FUNC_ID_NAME',
                 None,
                 i, j,
@@ -145,6 +145,7 @@ def correct_auth_server(secret, callback, port, RESTART=False):
         resp = req.execute()
         if resp is not None:
             tar = test_data.pop()
+            print(tar, resp)
             assert [tar] == resp
         SERVER_QUEUE.task_done()
     time.sleep(0.2)
@@ -162,7 +163,7 @@ def correct_auth_server(secret, callback, port, RESTART=False):
         SERVER_QUEUE.task_done()
         if resp is not None:
             tar = test_data.pop()
-            assert tar == resp
+            assert [tar] == resp
 
     logging.info("flush queue")
 
@@ -298,5 +299,5 @@ def _main():
 if __name__ == '__main__':
     logging.basicConfig(
         format='%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
-        datefmt='%Y-%m-%d:%H:%M:%S', level=logging.DEBUG)
+        datefmt='%Y-%m-%d:%H:%M:%S', level=logging.WARNING)
     _main()

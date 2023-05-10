@@ -170,10 +170,10 @@ class Task:
         rflag, resp = self._executable_tasks(rflag)
         rflag = self._post_tasks(rflag)
         if rflag != self.flag:
-
             logging.error(
                 f"Return value of executed tasks"
                 f"do not match task. {rflag} != {self.flag}")
+        print("RESP:", resp)
         return resp
 
     def _validate(self):
@@ -204,15 +204,19 @@ class Task:
         if self.func is None:
             return rflag
 
-        # set new fn
+        # set new fn, don't overwrite
         if self.flag & TASK.NEW_FN:
             for name in flatten(self.idname):
+                if CACHE.get(name) is not None:
+                    continue
                 CACHE[name] = self.func
             rflag |= TASK.NEW_FN
 
-        # set new ob
+        # set new ob, don't overwrite
         elif self.flag & TASK.NEW_OB:
             for name in flatten(self.idname):
+                if CACHE.get(name) is not None:
+                    continue
                 CACHE[name] = self.func()
             rflag |= TASK.NEW_OB
         return rflag
@@ -227,7 +231,7 @@ class Task:
         # set references
         for name in flatten(self.idname):
             ob = CACHE.get(name)
-            if not ob:
+            if ob is None:
                 continue
             if isinstance(ob, Callable):
                 fns.append(ob)
@@ -251,8 +255,8 @@ class Task:
         if self.flag & (TASK.CALL_FN | TASK.SET_OB) == (TASK.CALL_FN | TASK.SET_OB):
             # there should always be only 1ob+1fn
             for fn in fns:
-                for ob in obargs:
-                    ob = fn(*self.args, **self.kwargs)
+                for key in obkwargs.keys():
+                    CACHE[key] = fn(*self.args, **self.kwargs)
             rflag |= (TASK.CALL_FN | TASK.SET_OB)
 
         # call fns
@@ -262,6 +266,8 @@ class Task:
                 resp.append(val)
             rflag |= TASK.CALL_FN
 
+        if len(resp) == 0:
+            return rflag, None
         return rflag, resp
 
     def _post_tasks(self, rflag):
@@ -312,7 +318,6 @@ class Task:
         return lines
 
     def __eq__(self, other):
-        # not true equality...
         func_eq = False
         if self.func and other.func:
             a = self.func(*self.args, **self.kwargs)
