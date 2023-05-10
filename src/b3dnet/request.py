@@ -62,6 +62,7 @@ class TASK:
 
     SHUTDOWN: int = 1 << 10  # shutdown server
     RESTART: int = 1 << 11  # restart server
+    PASS_THROUGH: int = 1 << 12  # do nothing - mainly to prevent from drops
 
     CLEAR_CACHE: int = 1 << 31  # removes obs and fns
 
@@ -181,6 +182,10 @@ class Task:
     def execute(self) -> Optional[Any]:
         """ Executes a request depending on it's flag. """
         rflag = 0
+        if self.flag & TASK.PASS_THROUGH:
+            # do nothing in this case
+            return True
+
         rflag = self._pre_tasks(rflag)
         rflag, resp = self._executable_tasks(rflag)
         rflag = self._post_tasks(rflag)
