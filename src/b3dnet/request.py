@@ -25,7 +25,22 @@ from typing import Optional, Any, Callable, Union, List
 from io import StringIO
 from dataclasses import dataclass
 
-CACHE = dict()
+
+class TaskDict(dict):
+    """ Wrapping for dicts clear method. 
+    Store data which starts with PERSISTENT. """
+
+    def clear(self, soft: bool = False):
+        if not soft:
+            dict.clear(self)
+            return
+        for k in list(self.keys()):
+            if k.startswith('PERSISTENT'):
+                continue
+            del self[k]
+
+
+CACHE = TaskDict()
 
 MODULES = [
     'bpy', 'mathutils', 'bvhtree', 'bmesh', 'bpy_types', 'numpy',
@@ -298,10 +313,11 @@ class Task:
             rflag |= TASK.CLEAR_CACHE
 
         if self.flag & TASK.SHUTDOWN:
-            CACHE.clear()
+            CACHE.clear(soft=True)
             rflag |= TASK.SHUTDOWN
 
         elif self.flag & TASK.RESTART:
+            CACHE.clear(soft=True)
             rflag |= TASK.SHUTDOWN
         return rflag
 
