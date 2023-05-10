@@ -68,6 +68,7 @@ def correct_auth_client(CLIENT_QUEUE, secret, callback, port, RESTART=False):
     if callback is not None:
         logging.debug("Wait for server callback.")
         callback.wait()
+        time.sleep(0.1)
 
     # Stage sample data.
     if RESTART:
@@ -80,7 +81,7 @@ def correct_auth_client(CLIENT_QUEUE, secret, callback, port, RESTART=False):
     client = TCPClient("localhost", port, secret)
     conn = client.connect()
     assert conn
-    time.sleep(0.2)
+    time.sleep(0.1)
     assert client.flag & CLIENT.CONNECTED
 
     # Send staged data
@@ -123,8 +124,8 @@ def correct_auth_server(secret, callback, port, RESTART=False):
 
     # connect server
     server = TCPServer("localhost", port, SERVER_QUEUE,  secret)
-    server.connect(timeout=1.0)
-    time.sleep(.2)
+    # generous timeout (testing wise) as thread startup may take a while
+    server.connect(timeout=7.0)
     assert server.flag & SERVER.CONNECTED
 
     logging.debug("Try receiving data")
@@ -145,7 +146,6 @@ def correct_auth_server(secret, callback, port, RESTART=False):
         resp = req.execute()
         if resp is not None:
             tar = test_data.pop()
-            print(tar, resp)
             assert [tar] == resp
         SERVER_QUEUE.task_done()
     time.sleep(0.2)
