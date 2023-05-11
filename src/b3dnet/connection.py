@@ -29,8 +29,9 @@ from .request import *
 
 
 FAMILY = 'AF_INET'
-QUEUE_TIMEOUT = 5.0
-CONN_TIMEOUT = 10.0
+CONN_TIMEOUT = 15.0
+SOCK_TIMEOUT = 3.0
+QUEUE_TIMEOUT = 3.0
 
 
 @dataclass(frozen=True)
@@ -67,15 +68,13 @@ class TCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
     def get_request(self):
         """ Deliver multiprocessings password challange. """
-        logging.info("Get Request")
         if self.socket is None:
-            logging.info("OS ERROR")
             raise OSError("Server socket is closed.")
 
         # accept connection
         c, address = self.socket.accept()
         if c.gettimeout() is None:
-            c.settimeout(CONN_TIMEOUT)
+            c.settimeout(SOCK_TIMEOUT)
 
         # do multiprocessings challenge / handshake
         fake_mp_conn = SocketWrapper(c)
@@ -128,21 +127,17 @@ class TCPServerHandler(socketserver.StreamRequestHandler):
         while self.server.flag & SERVER.CONNECTED:
             b: Optional[bytes] = recv_bytes(self.request)
             if b is None:
-                logging.error("RECEIVED NONE.")
-                time.sleep(0.5)
-
                 if self.server.flag & (SERVER.ERROR | SERVER.SHUTDOWN | SERVER.RESTART):
                     logging.info(f"Shutting down because {self.server.flag}")
                     break
 
+                # self.server.running.clear()
                 if not self.server.running.is_set():
                     logging.info("self running not set")
                     break
 
+                time.sleep(0.5)
                 continue
-                # logging.warning("Reading operation timed out, shut down.")
-                # self.server.running.clear()
-                # break
 
             self.req = Task.from_bytes(b)
             self.server.queue.put(self.req)
@@ -177,6 +172,7 @@ class TCPServerHandler(socketserver.StreamRequestHandler):
         self.server.flag &= ~SERVER.CONNECTED
         self.server.running.clear()
         self.server.shutdown()
+        logging.info("Server shutting down 2.")
         super().finish()
         logging.info("Server shutting down.")
 
@@ -413,7 +409,8 @@ def _example_server():
     logging.info("Receive tasks")
     while server.flag & SERVER.CONNECTED:
         try:
-            task = q.get(timeout=QUEUE_TIMEOUT, block=True)
+            # wait time for new incoming conenctions
+            task = q.get(timeout=20, block=True)
         except queue.Empty:
             task = None
             break
