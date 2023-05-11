@@ -1,34 +1,14 @@
-# TCP Server Requests
-
-## Contributer nodes
-
-```
-python3 -m venv .venv
-source .venv/bin/activate
-
-# run tests
-pip install pytest
-python3 -m pytest
-
-# generate stubs
-pip install mypi
-stubgen src/b3dnet
-
-# build package
-pip install --upgrade build
-python3 -m build
-```
+# B3DNet - TCP Server Requests
 
 
-TCP setup for realime applications on local machines. As code can get executed based on client side requests, this implementation is not considered to be safe. Only receive Request Objects from sources that you trust.<br>
-
-**TCPRequests are build on top of socketserver and multiprocessing with the main goal to remote control blender via TCP.**
+TCP setup for realime applications on local machines. As code can get executed based on client side requests, this implementation is not considered to be safe. Only execute Tasks from sources that you trust.<br>
+**Build on top of socketserver and multiprocessing with the main goal to remote control blender via TCP.**
 
 
 ## Why not use Pickle?
 
 The goal was, to give the ability to communicate from other languages. <br>
-A Request-Object is a json with a python function as string!
+In a nutshell, Tasks are jsons with a python function as string!<br>
 ```
 {
   "flag": 16,
@@ -39,96 +19,178 @@ A Request-Object is a json with a python function as string!
 }
 ```
 
+
 ## Usage
 
-Setup the threaded TCPServer to receive and execute Request Objects:
+Setup the threaded TCPServer to receive and execute tasks:
+
 ```
 import queue
+from b3dnet.connection import TCPServer, SERVER
+
 q = queue.Queue()
+server = TCPServer("localhost", 6000, q, b'')
+server.connect(timeout=10.0)
 
-server = TTCPServer(6000, q, b'secret_key')
-server.connect(timeout=3.0)
+# receive tasks
+while server.flag & SERVER.CONNECTED:
+    try:
+        task = q.get(timeout=1.0, block=True)
+    except queue.Empty:
+        task = None
+        break
 
-# recv data, handle requests on receive
-while server.flag & SERVER_CONNECTED:
-    d = q.get(timeout=0.2)
-    resp = handle_request(d)
-    q.task_done()
+    if task:
+        q.task_done()
 
-# flush the queue and execute remaining requests
+# flush queue
 while not q.empty():
-    resp = handle_request(q.get(timeout=0.2))
+    task = q.get(timeout=QUEUE_TIMEOUT)
+    if task is None:
+        break
+    task.execute()
     q.task_done()
 ```
 
-Create requests and stage them in a Queue. Then send them using the TCPClient.<br>
-First, lets stage some requests, you may do this at runtime.
+Create and send tasks using a client:
 
 ```
 import queue
-q = queue.Queue()
+from b3dnet.connection import TCPClient, CLIENT
+from b3dnet.request import *
+ 
+# connect the client
+client = TCPClient("localhost", 6000, b'secret_key')
+client.connect()
 
+
+# function which should be passed
 def hello_world(*args, **kwargs):
     print("Method from client which prints!", args, kwargs)
 
-# register function to the cache on server side
-register_func = Request(
-    (REQUEST_REGISTATION | REQUEST_CALL), 'HELLO_WORLD_FN', hello_world
+# register and call function
+register_func = Task(
+    (TASK.NEW_FN | TASK.CALL_FN), 'HELLO_WORLD_FN', hello_world
 )
-q.put(register_func)
+client.send(register_func)
 
 # call the function using args
 for i in range(0, 1000):
-    call_data = Request(
-        REQUEST_CALL, 'HELLO_WORLD_FN', None,
+    call_data = Task(
+        TASK.CALL_FN, 'HELLO_WORLD_FN', None,
         f"args_{i}", kwargs=f"kwargs_{i}")
-    q.put(call_data)
+    client.send(call_data)
 
-# shutdown the server request
-q.put(Request((REQUEST_SHUTDOWN | REQUEST_CLEAR_CACHE), ))
-# or restart the server to wait for the next incoming connection...
-# q.put(Request((REQUEST_RESTART | REQUEST_CLEAR_CACHE)))
+# shutdown or restart the server request
+client.send(Task((TASK.SHUTDOWN | TASK.CLEAR_CACHE), ))
+# client.send(Task((TASK.RESTART)))
 ```
 
-Create a TCPClient to send data from the queue to the server. <br>
-The server can also communicate with default multiprocessing Clients.
+Lets extend this and expect we restarted the server:
 
 ```
-# use the queue with staged data
-# or start the Client in a separate thread and just put data in the queue!
-client = TCPClient(6000, q, b'secret_key')
+# (re)connect the client
+client = TCPClient("localhost", 6000, b'secret_key')
 client.connect()
 
-# send requests to server
-while client.flag & CLIENT_CONNECTED:
-    client.send()
-    if client.flag & (CLIENT_SHUTDOWN | CLIENT_ERROR):
-        client.cancel()
+# create a list object
+req = Task(TASK.NEW_OB, "OBJECT_ID", list)
+client.send(req)
+
+def fn_set(*args):
+    return [i for i in list(args)]
+ 
+# add args to the list using some fn 
+# (fns and objs are in the same cache so naming matters)
+args = [1, 2, 4, 3, 9, 6, 21]
+req = Task(
+    # it's possible to chain multiple tasks
+    (TASK.NEW_FN | TASK.CALL_FN | TASK.DEL_FN | TASK.SET_OB), 
+    ["FN_SET_ID", "OBJECT_ID"], fn_set,
+    *args
+)
+client.send(req)
+
+# some fn that takes args
+def fn_ob_as_arg(*args):
+    x = 0
+    for arg in args:
+        if isinstance(arg, int):
+            x += arg
+        if isinstance(arg, list):
+            x += fn_ob_as_arg(*arg)
+    return x
+
+# send object as args (may use multiple objects)
+req = Task(
+    (TASK.NEW_FN | TASK.CALL_FN | TASK.OB_AS_ARG | TASK.DEL_FN),
+    ["FN_SUM_ID", "OBJECT_ID", "OBJECT_ID"],
+    fn_ob_as_arg, 10, 10, 10
+)
+client.send(req)
 ```
 
-## Request Concept
 
-Using a dict to register functions on the Listener side which then can be called from the Client side. <br>
-Once a function isn't required anymore, consider to unregister it. <br>
+## Task Concept
+
+Using a dict to register functions and objs on the Listener side which then can be called from the Client side. <br>
+Once a function or ob isn't required anymore, consider to unregister it. <br>
 On the server side, functions may be registered when starting the application which can be called directly. <br>
 To do so, add functions to the CACHE dict. <br>
+If you do, consider to start the id name with 'PERSISTENT' so they don't get removed on restart or shutdown of the server. 
 
 Available flags:
 ```
-REQUEST_REGISTATION     # Register a function with an unique idname
-REQUEST_CALL            # Call a function using its idname
-REQUEST_UNREGISTRATION  # Unregister a function
-REQUEST_SHUTDOWN        # Shutdown the server
-REQUEST_RESTART         # Restart the server
-REQUEST_CLEAR_CACHE     # Clear all cached functions
+TASK.NEW_FN             # Register a function with an unique idname
+TASK.CALL_FN            # Call a function using its idname
+TASK.DEL_FN             # Unregister a function
+
+TASK.NEW_OB             # Register an ob
+TASK.SET_OB             # Set an ob by a fn call
+TASK.DEL_OB             # Unregister an ob
+TASK.OB_AS_ARG:         # Use an ob as arg
+TASK.OB_AS_KWARG:       # Use an ob with its idname as kwarg
+
+TASK.PASSTHOUGH         # Do nothing (useful when using client on a seperate thread which pull from queue)
+TASK.SHUTDOWN           # Shutdown the server and client
+TASK.RESTART            # Restart the server and shutdown client
+
+TASK.CLEAR_CACHE        # Clear all cached functions (also persistent ones)
 ```
 
 Modules which can be used by default (others may get filtered out). <br>
-You can overwrite this on the server side if necessary.
+You can overwrite this on the server & client side if necessary.
+-> b3dnet.request.MODULES = [...]
 
 ```
 'bpy', 'mathutils', 'bvhtree', 'bmesh', 'bpy_types', 'numpy',
 'bpy_extras', 'bl_ui', 'bl_operators', 'bl_math', 'bisect', 'math'
+```
+
+## Developer nodes
+
+Everything is based around the Tasks. <br>
+Once started, the server waits for x-seconds for incoming connections and shutsdown if no connection has been established in time. Then the server basically servers forever in a separete thread, shutsdown and restarts if asked to. All Tasks the server receives are staged in a queue which may be accessed from another thread. <br>
+The Client is basically just a multiprocessing client which uses Task object. <br>
+
+```
+# setup venv
+python3 -m venv .venv
+source .venv/bin/activate
+
+# install optional requirements
+pip install pytest
+pip install mypi
+pip install --upgrade build
+
+# run tests
+python3 -m pytest
+
+# generate stubs if you make major changes
+stubgen src/b3dnet
+
+# build package
+python3 -m build
 ```
 
 # License
