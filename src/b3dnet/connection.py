@@ -219,7 +219,7 @@ class TCPClient:
         # maybe thats better?
         # Get data from queue
         if (self.flag & CLIENT.CONNECTED) == 0:
-            return False
+            raise ConnectionError
 
         # Validate data from queue, has to be a Request object.
         if buf is None:
@@ -241,6 +241,7 @@ class TCPClient:
         except BrokenPipeError:
             logging.warning("Update failed: Broken Pipe.")
             self.flag |= CLIENT.SHUTDOWN
+            self.cancel()
             return False
 
         return True
