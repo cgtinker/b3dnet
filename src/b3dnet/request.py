@@ -193,7 +193,6 @@ class Task:
             logging.error(
                 f"Return value of executed tasks"
                 f"do not match task. {rflag} != {self.flag}")
-        print("RESP:", resp)
         return resp
 
     def _validate(self):
