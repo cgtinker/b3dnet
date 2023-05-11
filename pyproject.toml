@@ -1,12 +1,13 @@
 [project]
 name="b3dnet"
 version="0.0.1"
+readme="README.md"
 description="TCP Requests to communicate with local realtime applications."
 authors = [
-    { name="Denys Hsu - cgtinker",  email="hello@cgtinker.com"}
+    { name="D.Hsu - cgtinker",  email="hello@cgtinker.com"}
 ]
 maintainers = [
-    { name="Denys Hsu - cgtinker",  email="hello@cgtinker.com"}
+    { name="D.Hsu - cgtinker",  email="hello@cgtinker.com"}
 ]
 keywords = ["tcp", "server", "local", "realtime"]
 requires-python = ">=3.7"
