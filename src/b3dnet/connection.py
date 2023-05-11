@@ -15,6 +15,7 @@ Copyright (C) cgtinker, cgtinker.com, hello@cgtinker.com
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
+import time
 import logging
 import socketserver
 import multiprocessing as mp
@@ -28,8 +29,8 @@ from .request import *
 
 
 FAMILY = 'AF_INET'
-QUEUE_TIMEOUT = 1.0
-CONN_TIMEOUT = 3.0
+QUEUE_TIMEOUT = 5.0
+CONN_TIMEOUT = 10.0
 
 
 @dataclass(frozen=True)
@@ -66,7 +67,9 @@ class TCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
     def get_request(self):
         """ Deliver multiprocessings password challange. """
+        logging.info("Get Request")
         if self.socket is None:
+            logging.info("OS ERROR")
             raise OSError("Server socket is closed.")
 
         # accept connection
@@ -80,7 +83,9 @@ class TCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
             assert isinstance(self.auth, bytes)
 
             try:
+                logging.info("Deliver challange.")
                 mpc.deliver_challenge(fake_mp_conn, self.auth)
+                logging.info("Deliver answer.")
                 mpc.answer_challenge(fake_mp_conn, self.auth)
                 logging.info("Connection established.")
 
@@ -117,15 +122,27 @@ class TCPServerHandler(socketserver.StreamRequestHandler):
 
     def handle(self):
         logging.info(
-            f"Run threaded TCPServer: {self.server.running.is_set()} {self.server.flag & SERVER.CONNECTED}")
+            f"Run threaded TCPServer: {self.server.running.is_set() == self.server.flag & SERVER.CONNECTED == 1}")
         self.req = None
 
         while self.server.flag & SERVER.CONNECTED:
             b: Optional[bytes] = recv_bytes(self.request)
             if b is None:
-                logging.warning("Reading operation timed out, shut down.")
-                self.server.running.clear()
-                break
+                logging.error("RECEIVED NONE.")
+                time.sleep(0.5)
+
+                if self.server.flag & (SERVER.ERROR | SERVER.SHUTDOWN | SERVER.RESTART):
+                    logging.info(f"Shutting down because {self.server.flag}")
+                    break
+
+                if not self.server.running.is_set():
+                    logging.info("self running not set")
+                    break
+
+                continue
+                # logging.warning("Reading operation timed out, shut down.")
+                # self.server.running.clear()
+                # break
 
             self.req = Task.from_bytes(b)
             self.server.queue.put(self.req)
@@ -142,7 +159,7 @@ class TCPServerHandler(socketserver.StreamRequestHandler):
         flag for restart / shutdown has been received. """
         if not self.server.running.is_set() or self.req is None:
             logging.debug(
-                f"Server active: {self.server.running.is_set()}, Request: {self.req}")
+                f"Server active: {self.server.running.is_set()}")
             pass
         elif self.req.flag & TASK.SHUTDOWN:
             logging.debug("Server shutdown...")
@@ -160,7 +177,8 @@ class TCPServerHandler(socketserver.StreamRequestHandler):
         self.server.flag &= ~SERVER.CONNECTED
         self.server.running.clear()
         self.server.shutdown()
-        logging.info("Shutting down.")
+        super().finish()
+        logging.info("Server shutting down.")
 
 
 class TCPClient:
@@ -300,6 +318,9 @@ def _recv(conn: Any, size: int) -> Optional[bytes]:
         return conn.recv(size)
     except socket.timeout:
         return None
+    except ConnectionResetError:
+        logging.error("Connection Reset Error Occured.")
+        return None
 
 
 def _recv_in_chunks(conn: Any, size: int, buffer=b'') -> Optional[bytes]:
@@ -384,21 +405,27 @@ def _example_server():
     )
 
     q = queue.Queue()
-    server = TCPServer("localhost", 6001, q, b'secret_key')
+    logging.info("Wait for connection...")
+    server = TCPServer("localhost", 6000, q, b'')
     server.connect(timeout=10.0)
 
     # recv sync
+    logging.info("Receive tasks")
     while server.flag & SERVER.CONNECTED:
-        req = q.get(timeout=QUEUE_TIMEOUT)
-        if req:
-            req.execute()
-        q.task_done()
+        try:
+            task = q.get(timeout=QUEUE_TIMEOUT, block=True)
+        except queue.Empty:
+            task = None
+            break
+
+        if task:
+            q.task_done()
 
     # flush queue
     while not q.empty():
         req = q.get(timeout=QUEUE_TIMEOUT)
-        if req:
-            req.execute()
+        # if req:
+        # req.execute()
 
         q.task_done()
 
